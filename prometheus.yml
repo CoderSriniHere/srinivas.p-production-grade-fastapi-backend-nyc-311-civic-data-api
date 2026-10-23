@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: "nyc311-app"
+    static_configs:
+      - targets: ["app:8000"]
+    # /metrics requires the admin scope -- this is a non-expiring API key
+    # minted specifically for the scraper (POST /auth/api-keys, admin scope).
+    http_headers:
+      X-API-Key:
+        values: ["VFNPaczvfODNwfMZ7V5ivqfPIrPqcf_9Mtb43zPBOCM"]

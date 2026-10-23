@@ -1,0 +1,71 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nyc311
+      POSTGRES_PASSWORD: nyc311pass
+      POSTGRES_DB: nyc311
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nyc311 -d nyc311"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://nyc311:nyc311pass@postgres:5432/nyc311
+      SYNC_DATABASE_URL: postgresql+psycopg2://nyc311:nyc311pass@postgres:5432/nyc311
+      SECRET_KEY: dev-only-secret-change-me
+    ports:
+      - "8001:8000"
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  arq_worker:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+asyncpg://nyc311:nyc311pass@postgres:5432/nyc311
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: dev-only-secret-change-me
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: arq arq_worker.WorkerSettings
+    
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - app
+
+volumes:
+  pg_data:
+  uploads_data:
